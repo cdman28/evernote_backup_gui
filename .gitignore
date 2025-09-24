@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 build/
 dist/
+사용하지 않는 파일/
 
 # 원작자 소스코드 (삭제완료)
 evernote_backup/
