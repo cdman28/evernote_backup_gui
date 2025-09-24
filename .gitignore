@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+build/
+dist/
+
+# 원작자 소스코드 (삭제완료)
+evernote_backup/
+
+# OS
+.DS_Store
+Thumbs.db
