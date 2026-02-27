@@ -57,7 +57,8 @@
 ### evernote-backup.exe 다운로드
 
 👉 [**최신 릴리즈 다운로드**](https://github.com/vzhd1701/evernote-backup/releases/latest)에서  
-`evernote-backup-windows-amd64.exe`를 내려받고 **이름을 `evernote-backup.exe`로 변경**합니다.
+`bin_evernote_backup_1.13.1_win_x64.zip` 파일을 내려받아 압축을 풀면  
+`evernote-backup.exe`가 나옵니다. 이 파일을 GUI와 **같은 폴더에 놓아주세요**.
 
 ### GUI 실행 방법
 
