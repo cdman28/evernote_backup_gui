@@ -1,13 +1,85 @@
-# Python
+﻿# =========================
+#  Python 기본 캐시/빌드 파일
+# =========================
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 build/
 dist/
-사용하지 않는 파일/
+.eggs/
+*.egg-info/
+*.egg
+*.spec.bak
 
-# 원작자 소스코드 (삭제완료)
-evernote_backup/
+# PyInstaller 관련
+*.manifest
+*.spec~
 
-# OS
+# =========================
+#  OS / IDE 설정
+# =========================
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.bak
+desktop.ini
+*.code-workspace
+
+# Windows 관련
+$RECYCLE.BIN/
+*.lnk
+
+# =========================
+#  보안 관련 (민감정보)
+# =========================
+church_email_config.json
+.env
+.env.*
+ftp_config.json
+config.json
+config.yaml
+secrets.json
+*.pem
+*.key
+*.crt
+*.pfx
+token_*.txt
+passwords.txt
+ftp_credentials.txt
+
+# =========================
+#  로그/디버그
+# =========================
+debug_output/
+logs/
+*.log
+*.tmp
+*.bak
+*.temp
+
+# 임시 다운로드 파일
+temp/
+tmp/
+downloads/
+temp_*.xlsx
+temp_*.xls
+
+# =========================
+#  사용자 지정 폴더
+# =========================
+사용하지 않는 파일/
+py 버전/
+exe 버전/
+
+# 테스트/샘플 데이터 (실제 교인 정보 보호)
+test_data/
+sample_data/
+
+# =========================
+#  Excel 파일
+# =========================
+*.xlsx
+*.xls
+*.xlsm
