@@ -4,6 +4,26 @@
 
 ---
 
+## [v1.14.5] - 2026-09-08
+
+### ✨ 새로운 기능 (New Features)
+- **블랙리스트 관리 (manage blacklist) 기능 GUI 추가**:
+  - "🛠️ 진단 및 관리 도구" 섹션에 "🚫 블랙리스트 관리" 버튼 추가
+  - 블랙리스트 관리 대화창 구현:
+    - **조회**: 현재 차단된 노트 및 노트북 목록 조회
+    - **추가**: 노트 ID 또는 노트북 ID를 입력하여 차단 항목 추가 (--add-note-id, --add-notebook-id)
+    - **삭제**: 차단된 노트 또는 노트북을 목록에서 제거 (--del-note-id, --del-notebook-id)
+    - **전체 초기화**: 차단된 모든 노트 또는 노트북 한 번에 해제 (--reset-notes, --reset-notebooks)
+  - CLI의 `manage blacklist` 명령을 GUI에서 편리하게 사용 가능
+  - 모든 작업 결과는 로그에 기록되며 성공/실패 메시지 표시
+
+### 🔧 개발 개선 (Development)
+- `command_builder.py`에 `BlacklistOptions` 데이터클래스 추가
+- `build_manage_blacklist_command()` 함수 구현으로 blacklist 명령 조립 기능 추가
+- 기존 `build_manage_command()` 함수와 일관성 있게 설계
+
+---
+
 ## [v1.14.4] - 2026-09-08
 
 ### 🐛 버그 수정

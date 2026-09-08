@@ -38,6 +38,17 @@ class InitDbOptions:
     token: Optional[str] = None
 
 
+@dataclass
+class BlacklistOptions:
+    """블랙리스트 관리(manage blacklist) 옵션 데이터클래스"""
+    add_note_ids: List[str] = field(default_factory=list)
+    add_notebook_ids: List[str] = field(default_factory=list)
+    del_note_ids: List[str] = field(default_factory=list)
+    del_notebook_ids: List[str] = field(default_factory=list)
+    reset_notes: bool = False
+    reset_notebooks: bool = False
+
+
 def build_export_command(
     exe_path: str,
     db_path: str,
@@ -148,3 +159,52 @@ def build_manage_command(
         "--database",
         db_path,
     ]
+
+
+def build_manage_blacklist_command(
+    exe_path: str,
+    db_path: str,
+    options: Optional[BlacklistOptions] = None,
+) -> List[str]:
+    """CLI manage blacklist 명령 리스트를 생성합니다."""
+    cmd = [
+        exe_path,
+        "manage",
+        "blacklist",
+        "--database",
+        db_path,
+    ]
+
+    if not options:
+        # 옵션 없음 = 현재 블랙리스트 조회
+        return cmd
+
+    # add-note-id들 추가
+    for note_id in options.add_note_ids:
+        if note_id.strip():
+            cmd.extend(["--add-note-id", note_id.strip()])
+
+    # add-notebook-id들 추가
+    for notebook_id in options.add_notebook_ids:
+        if notebook_id.strip():
+            cmd.extend(["--add-notebook-id", notebook_id.strip()])
+
+    # del-note-id들 삭제
+    for note_id in options.del_note_ids:
+        if note_id.strip():
+            cmd.extend(["--del-note-id", note_id.strip()])
+
+    # del-notebook-id들 삭제
+    for notebook_id in options.del_notebook_ids:
+        if notebook_id.strip():
+            cmd.extend(["--del-notebook-id", notebook_id.strip()])
+
+    # reset-notes
+    if options.reset_notes:
+        cmd.append("--reset-notes")
+
+    # reset-notebooks
+    if options.reset_notebooks:
+        cmd.append("--reset-notebooks")
+
+    return cmd

@@ -41,10 +41,12 @@ from command_builder import (
     ExportOptions,
     SyncOptions,
     InitDbOptions,
+    BlacklistOptions,
     build_export_command,
     build_sync_command,
     build_init_db_command,
     build_manage_command,
+    build_manage_blacklist_command,
 )
 
 
@@ -238,7 +240,7 @@ def format_elapsed(seconds):
 
 
 class EvernoteBackupApp:
-    VERSION = "v1.14.4"
+    VERSION = "v1.14.5"
     BUILD_DATE = "2026.09"
 
     # 무시 가능한 에러 패턴 (동기화 중 건너뛸 수 있는 항목)
@@ -890,7 +892,19 @@ class EvernoteBackupApp:
             padx=6,
             pady=3,
         )
-        self.btn_manage_list.pack(fill=tk.X)
+        self.btn_manage_list.pack(fill=tk.X, pady=(0, 4))
+
+        self.btn_manage_blacklist = tk.Button(
+            frame,
+            text="🚫 블랙리스트 관리 (blacklist)",
+            command=self._open_blacklist_manager,
+            font=self.fonts["btn_sm"],
+            bg=self.colors["btn_bg"],
+            fg=self.colors["btn_text"],
+            padx=6,
+            pady=3,
+        )
+        self.btn_manage_blacklist.pack(fill=tk.X)
 
     def _start_manage_check(self):
         """DB 무결성 검사(manage check)를 시작합니다."""
@@ -961,6 +975,320 @@ class EvernoteBackupApp:
             self.root.after(0, lambda: self._set_status(f"{task_name} 실패", "error"))
         finally:
             self.is_working = False
+
+    def _open_blacklist_manager(self):
+        """블랙리스트 관리 대화창을 엽니다."""
+        if not self._check_can_run_tool():
+            return
+        self._log("🚫 블랙리스트 관리자를 엽니다...")
+        
+        # 메인 윈도우 위에 대화창 띄우기
+        dialog = tk.Toplevel(self.root)
+        dialog.title("블랙리스트 관리 (manage blacklist)")
+        dialog.geometry("600x550")
+        dialog.grab_set()
+        dialog.transient(self.root)
+        dialog.resizable(True, True)
+
+        # 대화창을 메인 윈도우 위에 중앙 배치
+        self.root.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 300
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 275
+        dialog.geometry(f"600x550+{x}+{y}")
+
+        # === 현재 블랙리스트 조회 섹션 ===
+        section1 = tk.LabelFrame(
+            dialog,
+            text="📋 현재 블랙리스트 조회",
+            font=self.fonts["section"],
+            fg=self.colors["section_fg"],
+            padx=10,
+            pady=10,
+        )
+        section1.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 5))
+
+        # 블랙리스트 표시 영역
+        text_current = scrolledtext.ScrolledText(
+            section1,
+            height=6,
+            font=self.fonts["log"],
+            bg=self.colors["log_bg"],
+            fg=self.colors["text"],
+            wrap=tk.WORD,
+            relief=tk.SUNKEN,
+            borderwidth=1,
+        )
+        text_current.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+
+        # "조회" 버튼
+        def query_blacklist():
+            """현재 블랙리스트를 조회합니다."""
+            text_current.config(state=tk.NORMAL)
+            text_current.delete(1.0, tk.END)
+            text_current.insert(tk.END, "⏳ 조회 중...\n")
+            text_current.config(state=tk.DISABLED)
+            dialog.update()
+
+            def run_query():
+                try:
+                    cmd = build_manage_blacklist_command(self.evernote_exe, self.database_path)
+                    self._queue_log(f"🔧 실행: {' '.join(cmd)}")
+
+                    startupinfo = None
+                    if platform.system() == "Windows":
+                        startupinfo = subprocess.STARTUPINFO()
+                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        startupinfo.wShowWindow = subprocess.SW_HIDE
+
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        bufsize=1,
+                        startupinfo=startupinfo,
+                    )
+                    assert proc.stdout is not None
+
+                    output_lines = []
+                    for line in proc.stdout:
+                        line = line.strip()
+                        if line:
+                            output_lines.append(line)
+                            self._queue_log(f"[BLACKLIST] {line}")
+
+                    proc.wait()
+
+                    # 대화창에 결과 표시
+                    if proc.returncode == 0:
+                        text_current.config(state=tk.NORMAL)
+                        text_current.delete(1.0, tk.END)
+                        if output_lines:
+                            text_current.insert(tk.END, "\n".join(output_lines))
+                        else:
+                            text_current.insert(tk.END, "✅ 현재 블랙리스트가 비어있습니다.")
+                        text_current.config(state=tk.DISABLED)
+                    else:
+                        text_current.config(state=tk.NORMAL)
+                        text_current.delete(1.0, tk.END)
+                        text_current.insert(tk.END, f"❌ 조회 실패 (코드: {proc.returncode})")
+                        text_current.config(state=tk.DISABLED)
+                except Exception as e:
+                    text_current.config(state=tk.NORMAL)
+                    text_current.delete(1.0, tk.END)
+                    text_current.insert(tk.END, f"❌ 오류: {str(e)}")
+                    text_current.config(state=tk.DISABLED)
+
+            threading.Thread(target=run_query, daemon=True).start()
+
+        tk.Button(
+            section1,
+            text="🔍 조회",
+            command=query_blacklist,
+            font=self.fonts["btn_md"],
+            bg=self.colors["btn_bg"],
+            fg=self.colors["btn_text"],
+            padx=15,
+            pady=5,
+        ).pack(anchor=tk.W)
+
+        # === 블랙리스트 항목 추가/삭제 섹션 ===
+        section2 = tk.LabelFrame(
+            dialog,
+            text="➕ ➖ 항목 추가/삭제",
+            font=self.fonts["section"],
+            fg=self.colors["section_fg"],
+            padx=10,
+            pady=10,
+        )
+        section2.pack(fill=tk.X, padx=10, pady=(0, 5))
+
+        # 노트 ID 추가
+        f_add_note = tk.Frame(section2)
+        f_add_note.pack(fill=tk.X, pady=3)
+        tk.Label(f_add_note, text="노트 ID 추가:", font=self.fonts["label"], width=14, anchor=tk.W).pack(side=tk.LEFT)
+        entry_add_note = tk.Entry(f_add_note, font=self.fonts["text"])
+        entry_add_note.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 5))
+
+        def add_note():
+            note_id = entry_add_note.get().strip()
+            if not note_id:
+                messagebox.showwarning("입력 필요", "노트 ID를 입력해주세요.")
+                return
+            execute_blacklist_cmd(BlacklistOptions(add_note_ids=[note_id]), "노트 추가")
+            entry_add_note.delete(0, tk.END)
+
+        tk.Button(
+            f_add_note,
+            text="추가",
+            command=add_note,
+            font=self.fonts["btn_sm"],
+            bg=self.colors["btn_bg"],
+            fg=self.colors["btn_text"],
+            padx=10,
+        ).pack(side=tk.LEFT)
+
+        # 노트 ID 삭제
+        f_del_note = tk.Frame(section2)
+        f_del_note.pack(fill=tk.X, pady=3)
+        tk.Label(f_del_note, text="노트 ID 삭제:", font=self.fonts["label"], width=14, anchor=tk.W).pack(side=tk.LEFT)
+        entry_del_note = tk.Entry(f_del_note, font=self.fonts["text"])
+        entry_del_note.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 5))
+
+        def del_note():
+            note_id = entry_del_note.get().strip()
+            if not note_id:
+                messagebox.showwarning("입력 필요", "노트 ID를 입력해주세요.")
+                return
+            execute_blacklist_cmd(BlacklistOptions(del_note_ids=[note_id]), "노트 삭제")
+            entry_del_note.delete(0, tk.END)
+
+        tk.Button(
+            f_del_note,
+            text="삭제",
+            command=del_note,
+            font=self.fonts["btn_sm"],
+            bg=self.colors["cancel"],
+            fg=self.colors["btn_text"],
+            padx=10,
+        ).pack(side=tk.LEFT)
+
+        # 노트북 ID 추가
+        f_add_notebook = tk.Frame(section2)
+        f_add_notebook.pack(fill=tk.X, pady=3)
+        tk.Label(f_add_notebook, text="노트북 ID 추가:", font=self.fonts["label"], width=14, anchor=tk.W).pack(side=tk.LEFT)
+        entry_add_notebook = tk.Entry(f_add_notebook, font=self.fonts["text"])
+        entry_add_notebook.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 5))
+
+        def add_notebook():
+            notebook_id = entry_add_notebook.get().strip()
+            if not notebook_id:
+                messagebox.showwarning("입력 필요", "노트북 ID를 입력해주세요.")
+                return
+            execute_blacklist_cmd(BlacklistOptions(add_notebook_ids=[notebook_id]), "노트북 추가")
+            entry_add_notebook.delete(0, tk.END)
+
+        tk.Button(
+            f_add_notebook,
+            text="추가",
+            command=add_notebook,
+            font=self.fonts["btn_sm"],
+            bg=self.colors["btn_bg"],
+            fg=self.colors["btn_text"],
+            padx=10,
+        ).pack(side=tk.LEFT)
+
+        # 노트북 ID 삭제
+        f_del_notebook = tk.Frame(section2)
+        f_del_notebook.pack(fill=tk.X, pady=3)
+        tk.Label(f_del_notebook, text="노트북 ID 삭제:", font=self.fonts["label"], width=14, anchor=tk.W).pack(side=tk.LEFT)
+        entry_del_notebook = tk.Entry(f_del_notebook, font=self.fonts["text"])
+        entry_del_notebook.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 5))
+
+        def del_notebook():
+            notebook_id = entry_del_notebook.get().strip()
+            if not notebook_id:
+                messagebox.showwarning("입력 필요", "노트북 ID를 입력해주세요.")
+                return
+            execute_blacklist_cmd(BlacklistOptions(del_notebook_ids=[notebook_id]), "노트북 삭제")
+            entry_del_notebook.delete(0, tk.END)
+
+        tk.Button(
+            f_del_notebook,
+            text="삭제",
+            command=del_notebook,
+            font=self.fonts["btn_sm"],
+            bg=self.colors["cancel"],
+            fg=self.colors["btn_text"],
+            padx=10,
+        ).pack(side=tk.LEFT)
+
+        # === 전체 초기화 섹션 ===
+        section3 = tk.LabelFrame(
+            dialog,
+            text="🔄 전체 초기화",
+            font=self.fonts["section"],
+            fg=self.colors["section_fg"],
+            padx=10,
+            pady=10,
+        )
+        section3.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        f_reset = tk.Frame(section3)
+        f_reset.pack(fill=tk.X)
+
+        def reset_notes():
+            if messagebox.askyesno("확인", "모든 차단된 노트를 해제하시겠습니까?"):
+                execute_blacklist_cmd(BlacklistOptions(reset_notes=True), "노트 전체 해제")
+
+        def reset_notebooks():
+            if messagebox.askyesno("확인", "모든 차단된 노트북을 해제하시겠습니까?"):
+                execute_blacklist_cmd(BlacklistOptions(reset_notebooks=True), "노트북 전체 해제")
+
+        tk.Button(
+            f_reset,
+            text="🔄 차단된 노트 모두 해제",
+            command=reset_notes,
+            font=self.fonts["btn_sm"],
+            bg=self.colors["warning"],
+            fg=self.colors["btn_text"],
+            padx=10,
+            pady=4,
+        ).pack(side=tk.LEFT, padx=(0, 5))
+
+        tk.Button(
+            f_reset,
+            text="🔄 차단된 노트북 모두 해제",
+            command=reset_notebooks,
+            font=self.fonts["btn_sm"],
+            bg=self.colors["warning"],
+            fg=self.colors["btn_text"],
+            padx=10,
+            pady=4,
+        ).pack(side=tk.LEFT)
+
+        # 공통 명령 실행 함수
+        def execute_blacklist_cmd(options: BlacklistOptions, task_name: str):
+            """블랙리스트 명령을 실행합니다."""
+            def run_cmd():
+                try:
+                    cmd = build_manage_blacklist_command(self.evernote_exe, self.database_path, options)
+                    self._queue_log(f"🔧 실행: {' '.join(cmd)}")
+
+                    startupinfo = None
+                    if platform.system() == "Windows":
+                        startupinfo = subprocess.STARTUPINFO()
+                        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        startupinfo.wShowWindow = subprocess.SW_HIDE
+
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        bufsize=1,
+                        startupinfo=startupinfo,
+                    )
+                    assert proc.stdout is not None
+
+                    for line in proc.stdout:
+                        line = line.strip()
+                        if line:
+                            self._queue_log(f"[BLACKLIST] {line}")
+
+                    proc.wait()
+
+                    if proc.returncode == 0:
+                        self._queue_log(f"✅ {task_name} 완료")
+                        messagebox.showinfo("성공", f"✅ {task_name}이 완료되었습니다.")
+                    else:
+                        self._queue_log(f"⚠️ {task_name} 비정상 종료 (코드: {proc.returncode})")
+                        messagebox.showerror("오류", f"❌ {task_name} 중 오류가 발생했습니다. (코드: {proc.returncode})")
+                except Exception as e:
+                    self._queue_log(f"❌ {task_name} 실행 오류: {str(e)}")
+                    messagebox.showerror("오류", f"❌ 오류: {str(e)}")
+
+            threading.Thread(target=run_cmd, daemon=True).start()
 
     def _create_status_section(self, parent):
         frame = tk.LabelFrame(
