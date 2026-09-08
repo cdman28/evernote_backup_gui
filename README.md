@@ -59,7 +59,7 @@
 ### 요구사항
 
 - **Windows 10 / 11** (64비트)
-- **evernote-backup.exe (v1.14.0)** — 이 GUI와 동일한 폴더 또는 `bin/`, `cli/` 폴더에 배치 필요
+- **evernote-backup.exe (v1.14.0)** — 이 GUI와 **동일한 폴더**에 배치 필수
 - 에버노트 계정 (Evernote 글로벌 또는 Yinxiang 印象笔记)
 
 ### evernote-backup.exe 다운로드
@@ -78,21 +78,23 @@ pip install -r requirements-dev.txt  # pytest 등
 python main_gui.py
 ```
 
-**방법 2 — EXE 빌드 후 실행 (배포용)**
+**방법 2 — 빌드된 EXE 사용 (권장)**
 
-```bash
-pip install pyinstaller
-pyinstaller 에버노트백업도구_v1.14.0.spec
-# dist/ 폴더에 에버노트백업도구_v1.14.0.exe 생성됨
+[GitHub Releases](https://github.com/cdman28/evernote_backup_gui/releases)에서:
+1. `EvernoteBackupGUI_v1.14.3.exe` 다운로드
+2. [evernote-backup v1.14.0](https://github.com/vzhd1701/evernote-backup/releases/tag/1.14.0)에서 `evernote-backup.exe` 다운로드
+3. 두 파일을 **같은 폴더**에 저장
+4. `EvernoteBackupGUI_v1.14.3.exe` 실행
+
+**폴더 구조 (필수)**
+
+```
+📁 작업 폴더/
+├── EvernoteBackupGUI_v1.14.3.exe  ← ← 이것을 실행!
+└── evernote-backup.exe             ← CLI (필수!)
 ```
 
-**폴더 구조 (실행 전 확인)**
-
-```
-📁 실행 폴더/
-├── 에버노트백업도구_v1.14.0.exe   ← 이 GUI
-└── evernote-backup.exe            ← 원본 CLI (v1.14.0 필수!)
-```
+> 💡 **처음 사용하시나요?** → [📖 상세 설치 가이드](INSTALLATION_GUIDE.md) 참고
 
 ---
 
