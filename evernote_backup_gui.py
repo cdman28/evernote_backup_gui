@@ -194,7 +194,7 @@ def get_db_info(db_path):
                 pass
 
         try:
-            cur.execute("SELECT value FROM config WHERE name='access_token'")
+            cur.execute("SELECT value FROM config WHERE name='auth_token'")
             row = cur.fetchone()
             info["has_token"] = bool(row and row[0])
         except Exception:
@@ -234,7 +234,7 @@ def format_elapsed(seconds):
 
 
 class EvernoteBackupApp:
-    VERSION = "v1.14.0"
+    VERSION = "v1.14.1"
     BUILD_DATE = "2026.09"
 
     # 무시 가능한 에러 패턴 (동기화 중 건너뛸 수 있는 항목)
@@ -1080,9 +1080,12 @@ class EvernoteBackupApp:
         self.oauth_url_var.set("")
         self.url_helper_frame.pack(fill=tk.X, pady=(8, 0))
 
-        # 클립보드 자동 감시 시작
+        # 클립보드 자동 감시 시작 (현재 클립보드 내용으로 초기화하여 이전 URL 재감지 방지)
         self._clipboard_monitor_active = True
-        self._clipboard_last = ""
+        try:
+            self._clipboard_last = self.root.clipboard_get()
+        except Exception:
+            self._clipboard_last = ""
         self._start_clipboard_monitor()
 
         threading.Thread(target=self._oauth_task, daemon=True).start()
