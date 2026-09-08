@@ -1,6 +1,6 @@
 """
 에버노트 백업 도구 GUI
-evernote-backup v1.13.1 CLI를 래핑한 사용자 친화적 인터페이스
+evernote-backup v1.14.0 CLI를 래핑한 사용자 친화적 인터페이스
 
 주요 기능:
 - 원클릭 OAuth 인증 (GUI 내부에서 자동 처리)
@@ -31,6 +31,21 @@ try:
     HAS_CLIPBOARD = True
 except ImportError:
     HAS_CLIPBOARD = False
+
+from version_check import (
+    SUPPORTED_CLI_VERSION,
+    VersionStatus,
+    check_version_compatibility,
+)
+from command_builder import (
+    ExportOptions,
+    SyncOptions,
+    InitDbOptions,
+    build_export_command,
+    build_sync_command,
+    build_init_db_command,
+    build_manage_command,
+)
 
 
 # =============================================================================
@@ -113,16 +128,40 @@ def test_database_path(db_path):
         return False, str(e)
 
 
+def get_possible_exe_locations():
+    """evernote-backup.exe를 탐색할 후보 경로 목록을 반환합니다."""
+    exe_name = "evernote-backup.exe" if platform.system() == "Windows" else "evernote-backup"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    exec_dir = os.path.dirname(sys.executable)
+    cwd = os.getcwd()
+
+    candidates = [
+        exe_name,
+        os.path.join(script_dir, exe_name),
+        os.path.join(exec_dir, exe_name),
+        os.path.join(cwd, exe_name),
+        os.path.join(script_dir, "bin", exe_name),
+        os.path.join(script_dir, "cli", exe_name),
+        os.path.join(cwd, "bin", exe_name),
+        os.path.join(cwd, "cli", exe_name),
+        shutil.which(exe_name) or "",
+    ]
+    seen = set()
+    result = []
+    for path in candidates:
+        if not path:
+            continue
+        norm_path = os.path.normpath(os.path.abspath(path))
+        if norm_path not in seen:
+            seen.add(norm_path)
+            result.append(norm_path)
+    return result
+
+
 def find_evernote_exe():
     """evernote-backup.exe 파일을 찾아 절대 경로를 반환합니다."""
-    possible_locations = [
-        "evernote-backup.exe",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "evernote-backup.exe"),
-        os.path.join(os.path.dirname(sys.executable), "evernote-backup.exe"),
-        shutil.which("evernote-backup.exe") or "",
-    ]
-    for path in possible_locations:
-        if path and os.path.isfile(path):
+    for path in get_possible_exe_locations():
+        if os.path.isfile(path):
             return os.path.abspath(path)
     return None
 
@@ -195,8 +234,8 @@ def format_elapsed(seconds):
 
 
 class EvernoteBackupApp:
-    VERSION = "v1.13.1"
-    BUILD_DATE = "2026.02"
+    VERSION = "v1.14.0"
+    BUILD_DATE = "2026.09"
 
     # 무시 가능한 에러 패턴 (동기화 중 건너뛸 수 있는 항목)
     IGNORABLE_PATTERNS = [
@@ -214,8 +253,8 @@ class EvernoteBackupApp:
     def __init__(self, root):
         self.root = root
         self.root.title(f"에버노트 백업 도구 (GUI for evernote-backup {self.VERSION})")
-        self.root.geometry("920x780")
-        self.root.minsize(780, 680)
+        self.root.geometry("960x860")
+        self.root.minsize(820, 720)
 
         # 상태 변수
         self.is_working = False
@@ -262,53 +301,102 @@ class EvernoteBackupApp:
     # =========================================================================
 
     def _check_evernote_exe(self):
-        """EXE 파일을 검증합니다."""
+        """EXE 파일을 검증하고 CLI 버전 호환성을 확인합니다."""
         self.evernote_exe = find_evernote_exe()
-        if self.evernote_exe:
-            self._log(f"✅ evernote-backup.exe 발견: {self.evernote_exe}")
-        else:
+        if not self.evernote_exe:
             self._log("❌ evernote-backup.exe를 찾을 수 없습니다")
             self._log("💡 이 GUI와 같은 폴더에 배치해 주세요")
             self._show_exe_missing_dialog()
+            return
+
+        self._log(f"✅ evernote-backup.exe 발견: {self.evernote_exe}")
+
+        # 버전 호환성 검사 (version_check 모듈 활용)
+        check_res = check_version_compatibility(self.evernote_exe)
+        self._log(f"🔎 CLI 버전: {check_res.message}")
+
+        if check_res.status == VersionStatus.MATCH:
+            self._log(f"✅ CLI 버전이 권장 버전(v{SUPPORTED_CLI_VERSION})과 일치합니다.")
+        elif check_res.status == VersionStatus.PATCH_MISMATCH:
+            self._log(f"ℹ️ {check_res.message}")
+        elif check_res.status == VersionStatus.MINOR_MISMATCH:
+            self._log(f"⚠️ {check_res.message}")
+            # 마이너 버전 불일치: 경고 후 사용자 확인
+            proceed = messagebox.askyesno(
+                "CLI 버전 차이 알림",
+                f"{check_res.message}\n\n계속 진행하시겠습니까?",
+                icon="warning",
+            )
+            if not proceed:
+                self._log("⏹ 사용자가 버전 차이로 인해 실행을 중단했습니다.")
+                self.btn_oauth.config(state=tk.DISABLED)
+                self.btn_backup.config(state=tk.DISABLED)
+                self._set_status("CLI 버전 차이로 기능이 일시 중지됨", "warning")
+        elif check_res.status == VersionStatus.MAJOR_MISMATCH:
+            self._log(f"❌ {check_res.message}")
+            messagebox.showerror("호환 불가 CLI 버전", check_res.message)
+            self.btn_oauth.config(state=tk.DISABLED)
+            self.btn_backup.config(state=tk.DISABLED)
+            self._set_status("호환되지 않는 CLI 버전 (실행 차단)", "error")
+        else:
+            self._log(f"⚠️ {check_res.message}")
 
     def _show_exe_missing_dialog(self):
-        """EXE 파일 누락 시 자세한 안내 다이얼로그를 표시합니다."""
+        """EXE 파일 누락 시 검색된 경로 목록과 함께 상세 안내 다이얼로그를 표시합니다."""
         dialog = tk.Toplevel(self.root)
         dialog.title("필수 파일 누락")
-        dialog.geometry("500x300")
+        dialog.geometry("560x420")
         dialog.grab_set()
         dialog.transient(self.root)
         dialog.resizable(False, False)
 
         self.root.update_idletasks()
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 250
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 150
-        dialog.geometry(f"500x300+{x}+{y}")
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 280
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 210
+        dialog.geometry(f"560x420+{x}+{y}")
 
-        frame = tk.Frame(dialog, padx=25, pady=20)
+        frame = tk.Frame(dialog, padx=20, pady=15)
         frame.pack(fill=tk.BOTH, expand=True)
 
         tk.Label(
             frame,
             text="⚠️ evernote-backup.exe 파일이 필요합니다",
-            font=("맑은 고딕", 13, "bold"),
+            font=("맑은 고딕", 12, "bold"),
             fg=self.colors["error"],
-        ).pack(pady=(0, 15))
+        ).pack(pady=(0, 8))
 
         tk.Label(
             frame,
             text=(
-                "이 프로그램은 evernote-backup.exe와 함께 사용해야 합니다.\n\n"
-                "📥 설치 방법:\n"
-                "  1. 아래 버튼으로 GitHub 다운로드 페이지를 열어 주세요\n"
-                "  2. evernote-backup.exe를 다운로드하세요\n"
-                "  3. 이 GUI와 같은 폴더에 넣어 주세요\n"
-                "  4. 프로그램을 다시 실행해 주세요\n\n"
-                "💡 이미 다운로드했다면, 파일이 같은 폴더에 있는지 확인해 주세요."
+                "이 프로그램은 evernote-backup.exe와 함께 사용해야 합니다.\n"
+                "아래 검색 경로에 evernote-backup.exe 파일이 존재하지 않습니다:"
             ),
             font=("맑은 고딕", 9),
             justify=tk.LEFT,
-        ).pack(anchor=tk.W, pady=(0, 15))
+        ).pack(anchor=tk.W, pady=(0, 6))
+
+        # 검색된 경로 목록 표시 (스크롤 박스)
+        searched_paths = get_possible_exe_locations()
+        path_box = scrolledtext.ScrolledText(
+            frame, height=5, font=("Consolas", 8), bg="#F5F5F5", relief=tk.SUNKEN
+        )
+        path_box.pack(fill=tk.X, pady=(0, 10))
+        for p in searched_paths:
+            path_box.insert(tk.END, f"• {p}\n")
+        path_box.config(state=tk.DISABLED)
+
+        tk.Label(
+            frame,
+            text=(
+                "📥 설치 방법:\n"
+                "  1. 아래 버튼으로 GitHub 릴리스 페이지를 엽니다.\n"
+                "  2. 최신 Windows용 zip을 받아 evernote-backup.exe를 추출합니다.\n"
+                "  3. 이 GUI 프로그램과 같은 폴더에 넣어주세요.\n"
+                "  4. 프로그램을 다시 실행해 주세요."
+            ),
+            font=("맑은 고딕", 9),
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, pady=(0, 12))
 
         btn_frame = tk.Frame(frame)
         btn_frame.pack()
@@ -323,7 +411,7 @@ class EvernoteBackupApp:
             bg=self.colors["btn_bg"],
             fg=self.colors["btn_text"],
             padx=15,
-            pady=6,
+            pady=5,
         ).pack(side=tk.LEFT, padx=(0, 10))
 
         tk.Button(
@@ -332,12 +420,27 @@ class EvernoteBackupApp:
             command=dialog.destroy,
             font=("맑은 고딕", 10),
             padx=15,
-            pady=6,
+            pady=5,
         ).pack(side=tk.LEFT)
 
     def _setup_variables(self):
         self.backend_var = tk.StringVar(value="evernote")
         self.output_path = tk.StringVar(value=self.export_dir)
+
+        # Export 옵션 변수 (3-1단계)
+        self.opt_single_notes = tk.BooleanVar(value=False)
+        self.opt_overwrite = tk.BooleanVar(value=True)
+        self.opt_add_metadata = tk.BooleanVar(value=False)
+        self.opt_no_export_date = tk.BooleanVar(value=False)
+        self.opt_include_trash = tk.BooleanVar(value=False)
+        self.opt_notebook_filter = tk.StringVar(value="")
+        self.opt_tag_filter = tk.StringVar(value="")
+
+        # 고급 설정 변수 (3-3단계)
+        self.opt_use_system_ssl = tk.BooleanVar(value=False)
+        self.opt_oauth_host = tk.StringVar(value="")
+        self.opt_manual_token = tk.StringVar(value="")
+        self.show_advanced = tk.BooleanVar(value=False)
 
     def _setup_styles(self):
         self.colors = {
@@ -398,6 +501,7 @@ class EvernoteBackupApp:
         self._create_db_section(left_col)
         self._create_oauth_section(left_col)
         self._create_backup_section(left_col)
+        self._create_tools_section(left_col)
         self._create_status_section(left_col)
 
         # 오른쪽: 로그
@@ -494,9 +598,9 @@ class EvernoteBackupApp:
             font=self.fonts["section"],
             fg=self.colors["section_fg"],
             padx=10,
-            pady=10,
+            pady=8,
         )
-        frame.pack(fill=tk.X, pady=(0, 10))
+        frame.pack(fill=tk.X, pady=(0, 8))
 
         self.oauth_status_label = tk.Label(
             frame,
@@ -504,7 +608,7 @@ class EvernoteBackupApp:
             font=self.fonts["small"],
             fg=self.colors["warning"],
         )
-        self.oauth_status_label.pack(anchor=tk.W, pady=(0, 8))
+        self.oauth_status_label.pack(anchor=tk.W, pady=(0, 6))
 
         self.btn_oauth = tk.Button(
             frame,
@@ -517,10 +621,10 @@ class EvernoteBackupApp:
             disabledforeground="#FFFFFF",
             command=self._start_oauth,
             padx=15,
-            pady=6,
+            pady=5,
             width=20,
         )
-        self.btn_oauth.pack(pady=(0, 5))
+        self.btn_oauth.pack(pady=(0, 4))
 
         self.oauth_progress_label = tk.Label(
             frame,
@@ -534,7 +638,6 @@ class EvernoteBackupApp:
 
         # --- URL 도우미 (OAuth 진행 중에만 표시) ---
         self.url_helper_frame = tk.Frame(frame, bg=self.colors["bg"])
-        # pack 하지 않음 — _start_oauth에서 표시
 
         tk.Label(
             self.url_helper_frame,
@@ -568,23 +671,69 @@ class EvernoteBackupApp:
         )
         self.btn_open_url.pack(side=tk.RIGHT, padx=(4, 0))
 
+        # --- 3-3 고급 설정 접이식 섹션 ---
+        self.btn_toggle_advanced = tk.Button(
+            frame,
+            text="⚙️ 고급 인증/네트워크 설정 ▼",
+            command=self._toggle_advanced_options,
+            font=self.fonts["small"],
+            relief=tk.FLAT,
+            fg=self.colors["primary"],
+            cursor="hand2",
+        )
+        self.btn_toggle_advanced.pack(anchor=tk.W, pady=(4, 0))
+
+        self.advanced_frame = tk.Frame(frame)
+
+        b_row = tk.Frame(self.advanced_frame)
+        b_row.pack(fill=tk.X, pady=(2, 2))
+        tk.Label(b_row, text="서버:", font=self.fonts["small"]).pack(side=tk.LEFT)
+        tk.Radiobutton(b_row, text="글로벌", variable=self.backend_var, value="evernote", font=self.fonts["small"]).pack(side=tk.LEFT, padx=3)
+        tk.Radiobutton(b_row, text="인샹(중국)", variable=self.backend_var, value="china", font=self.fonts["small"]).pack(side=tk.LEFT)
+
+        tk.Checkbutton(
+            self.advanced_frame,
+            text="시스템 SSL CA 사용 (--use-system-ssl-ca)",
+            variable=self.opt_use_system_ssl,
+            font=self.fonts["small"],
+        ).pack(anchor=tk.W)
+
+        h_row = tk.Frame(self.advanced_frame)
+        h_row.pack(fill=tk.X, pady=1)
+        tk.Label(h_row, text="OAuth 호스트:", font=self.fonts["small"]).pack(side=tk.LEFT)
+        tk.Entry(h_row, textvariable=self.opt_oauth_host, font=self.fonts["text"], width=18).pack(side=tk.LEFT, padx=4)
+
+        t_row = tk.Frame(self.advanced_frame)
+        t_row.pack(fill=tk.X, pady=1)
+        tk.Label(t_row, text="수동 토큰:", font=self.fonts["small"]).pack(side=tk.LEFT)
+        tk.Entry(t_row, textvariable=self.opt_manual_token, font=self.fonts["text"], width=20, show="*").pack(side=tk.LEFT, padx=4)
+
+    def _toggle_advanced_options(self):
+        """고급 설정 섹션을 접거나 펼칩니다."""
+        if self.show_advanced.get():
+            self.advanced_frame.pack_forget()
+            self.show_advanced.set(False)
+            self.btn_toggle_advanced.config(text="⚙️ 고급 인증/네트워크 설정 ▼")
+        else:
+            self.advanced_frame.pack(fill=tk.X, pady=(4, 2))
+            self.show_advanced.set(True)
+            self.btn_toggle_advanced.config(text="⚙️ 고급 인증/네트워크 설정 ▲")
+
     def _create_backup_section(self, parent):
         frame = tk.LabelFrame(
             parent,
-            text="💾 백업 설정",
+            text="💾 백업 및 내보내기 설정",
             font=self.fonts["section"],
             fg=self.colors["section_fg"],
             padx=10,
-            pady=10,
+            pady=8,
         )
-        frame.pack(fill=tk.X, pady=(0, 10))
+        frame.pack(fill=tk.X, pady=(0, 8))
 
-        tk.Label(frame, text="내보내기 폴더:", font=self.fonts["label"]).pack(
-            anchor=tk.W
-        )
+        tk.Label(frame, text="내보내기 폴더:", font=self.fonts["label"]).pack(anchor=tk.W)
 
         folder_frame = tk.Frame(frame)
-        folder_frame.pack(fill=tk.X, pady=3)
+        folder_frame.pack(fill=tk.X, pady=2)
 
         tk.Entry(
             folder_frame,
@@ -604,9 +753,37 @@ class EvernoteBackupApp:
             pady=2,
         ).pack(side=tk.RIGHT, padx=(5, 0))
 
+        # --- 3-1 세부 내보내기 옵션 ---
+        opt_box = tk.LabelFrame(frame, text="내보내기 세부 옵션", font=self.fonts["small"], padx=6, pady=4)
+        opt_box.pack(fill=tk.X, pady=(6, 4))
+
+        cb_row1 = tk.Frame(opt_box)
+        cb_row1.pack(fill=tk.X)
+        tk.Checkbutton(cb_row1, text="덮어쓰기 (--overwrite)", variable=self.opt_overwrite, font=self.fonts["small"]).pack(side=tk.LEFT)
+        tk.Checkbutton(cb_row1, text="개별 노트 분할 (--single-notes)", variable=self.opt_single_notes, font=self.fonts["small"]).pack(side=tk.LEFT, padx=(8, 0))
+
+        cb_row2 = tk.Frame(opt_box)
+        cb_row2.pack(fill=tk.X)
+        tk.Checkbutton(cb_row2, text="메타데이터 포함", variable=self.opt_add_metadata, font=self.fonts["small"]).pack(side=tk.LEFT)
+        tk.Checkbutton(cb_row2, text="날짜 제외", variable=self.opt_no_export_date, font=self.fonts["small"]).pack(side=tk.LEFT, padx=(6, 0))
+        tk.Checkbutton(cb_row2, text="휴지통 포함", variable=self.opt_include_trash, font=self.fonts["small"]).pack(side=tk.LEFT, padx=(6, 0))
+
+        filter_box = tk.Frame(opt_box)
+        filter_box.pack(fill=tk.X, pady=(3, 1))
+
+        f_nb = tk.Frame(filter_box)
+        f_nb.pack(fill=tk.X, pady=1)
+        tk.Label(f_nb, text="노트북 필터:", font=self.fonts["small"]).pack(side=tk.LEFT)
+        tk.Entry(f_nb, textvariable=self.opt_notebook_filter, font=self.fonts["text"]).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0))
+
+        f_tg = tk.Frame(filter_box)
+        f_tg.pack(fill=tk.X, pady=1)
+        tk.Label(f_tg, text="태그 필터:    ", font=self.fonts["small"]).pack(side=tk.LEFT)
+        tk.Entry(f_tg, textvariable=self.opt_tag_filter, font=self.fonts["text"]).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0))
+
         # 백업 시작 + 중지 버튼
         btn_frame = tk.Frame(frame)
-        btn_frame.pack(pady=(10, 0))
+        btn_frame.pack(pady=(8, 0))
 
         self.btn_backup = tk.Button(
             btn_frame,
@@ -620,7 +797,7 @@ class EvernoteBackupApp:
             command=self._start_backup,
             state="disabled",
             padx=20,
-            pady=8,
+            pady=6,
         )
         self.btn_backup.pack(side=tk.LEFT, padx=(0, 5))
 
@@ -636,9 +813,118 @@ class EvernoteBackupApp:
             command=self._cancel_backup,
             state="disabled",
             padx=15,
-            pady=8,
+            pady=6,
         )
         self.btn_cancel.pack(side=tk.LEFT)
+
+    def _create_tools_section(self, parent):
+        """3-2 DB 진단 기능 (manage check, manage list) 섹션을 생성합니다."""
+        frame = tk.LabelFrame(
+            parent,
+            text="🛠️ 진단 및 관리 도구",
+            font=self.fonts["section"],
+            fg=self.colors["section_fg"],
+            padx=10,
+            pady=6,
+        )
+        frame.pack(fill=tk.X, pady=(0, 8))
+
+        btn_row = tk.Frame(frame)
+        btn_row.pack(fill=tk.X)
+
+        self.btn_manage_check = tk.Button(
+            btn_row,
+            text="🔍 DB 무결성 검사 (check)",
+            command=self._start_manage_check,
+            font=self.fonts["btn_sm"],
+            bg=self.colors["btn_bg"],
+            fg=self.colors["btn_text"],
+            padx=6,
+            pady=3,
+        )
+        self.btn_manage_check.pack(side=tk.LEFT, padx=(0, 4), expand=True, fill=tk.X)
+
+        self.btn_manage_list = tk.Button(
+            btn_row,
+            text="📋 노트북 목록 조회 (list)",
+            command=self._start_manage_list,
+            font=self.fonts["btn_sm"],
+            bg=self.colors["btn_bg"],
+            fg=self.colors["btn_text"],
+            padx=6,
+            pady=3,
+        )
+        self.btn_manage_list.pack(side=tk.LEFT, expand=True, fill=tk.X)
+
+    def _start_manage_check(self):
+        """DB 무결성 검사(manage check)를 시작합니다."""
+        if not self._check_can_run_tool():
+            return
+        self._log("🔍 [진단] DB 무결성 검사 (manage check)를 시작합니다...")
+        threading.Thread(target=self._run_manage_task, args=("check", "DB 무결성 검사"), daemon=True).start()
+
+    def _start_manage_list(self):
+        """백업된 노트북 목록 조회(manage list)를 시작합니다."""
+        if not self._check_can_run_tool():
+            return
+        self._log("📋 [조회] 백업 데이터베이스 노트북 목록 (manage list)을 조회합니다...")
+        threading.Thread(target=self._run_manage_task, args=("list", "노트북 목록 조회"), daemon=True).start()
+
+    def _check_can_run_tool(self):
+        """도구 실행 전 DB 존재 여부 및 작업 중 상태를 확인합니다."""
+        if not self.evernote_exe:
+            messagebox.showerror("오류", "evernote-backup.exe 파일을 찾을 수 없습니다.")
+            return False
+        if not os.path.exists(self.database_path):
+            messagebox.showwarning("DB 없음", "데이터베이스 파일이 존재하지 않습니다.\n먼저 OAuth 인증 및 동기화를 진행해 주세요.")
+            return False
+        if self.is_working:
+            messagebox.showwarning("진행 중", "현재 다른 작업이 진행 중입니다.")
+            return False
+        return True
+
+    def _run_manage_task(self, subcommand: str, task_name: str):
+        """백그라운드에서 evernote-backup manage [check|list]를 실행하고 로그에 출력합니다."""
+        try:
+            self.is_working = True
+            self.root.after(0, lambda: self._set_status(f"{task_name} 실행 중...", "warning"))
+
+            cmd = build_manage_command(self.evernote_exe, self.database_path, subcommand)
+            self._queue_log(f"🔧 실행: {' '.join(cmd)}")
+
+            startupinfo = None
+            if platform.system() == "Windows":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                startupinfo=startupinfo,
+            )
+            assert proc.stdout is not None
+
+            for line in proc.stdout:
+                line = line.strip()
+                if line:
+                    self._queue_log(f"[{subcommand.upper()}] {line}")
+
+            proc.wait()
+            if proc.returncode == 0:
+                self._queue_log(f"✅ {task_name} 완료")
+                self.root.after(0, lambda: self._set_status(f"{task_name} 완료", "success"))
+            else:
+                self._queue_log(f"⚠️ {task_name} 비정상 종료 (종료 코드: {proc.returncode})")
+                self.root.after(0, lambda: self._set_status(f"{task_name} 오류 발생", "error"))
+        except Exception as e:
+            self._queue_log(f"❌ {task_name} 실행 오류: {str(e)}")
+            self.root.after(0, lambda: self._set_status(f"{task_name} 실패", "error"))
+        finally:
+            self.is_working = False
 
     def _create_status_section(self, parent):
         frame = tk.Frame(parent, bg=self.colors["bg"])
@@ -795,18 +1081,19 @@ class EvernoteBackupApp:
             if os.path.exists(log_file):
                 os.remove(log_file)
 
-            cmd = [
+            init_opts = InitDbOptions(
+                backend=self.backend_var.get(),
+                force=True,
+                use_system_ssl_ca=self.opt_use_system_ssl.get(),
+                oauth_host=self.opt_oauth_host.get().strip() or None,
+                token=self.opt_manual_token.get().strip() or None,
+            )
+            cmd = build_init_db_command(
                 self.evernote_exe,
-                "--verbose",
-                "--log",
-                log_file,
-                "init-db",
-                "--force",
-                "--database",
                 db_path,
-                "--backend",
-                "evernote",
-            ]
+                log_file=log_file,
+                options=init_opts,
+            )
             self._queue_log(f"🔧 실행: {' '.join(cmd)}")
 
             # 실제 콘솔 창을 띄워서 isatty() 체크를 통과시킴
@@ -1123,7 +1410,11 @@ class EvernoteBackupApp:
         )
         self.root.after(0, lambda: self._set_progress_detail("서버에 연결 중..."))
 
-        cmd = [self.evernote_exe, "sync", "--database", self.database_path]
+        sync_opts = SyncOptions(
+            use_system_ssl_ca=self.opt_use_system_ssl.get(),
+            token=self.opt_manual_token.get().strip() or None,
+        )
+        cmd = build_sync_command(self.evernote_exe, self.database_path, sync_opts)
         self._queue_log(f"🔧 Sync: {' '.join(cmd)}")
 
         proc = subprocess.Popen(
@@ -1205,15 +1496,21 @@ class EvernoteBackupApp:
         )
         self.root.after(0, lambda: self._set_progress_detail("내보내기 준비 중..."))
 
-        cmd = [
+        export_opts = ExportOptions(
+            single_notes=self.opt_single_notes.get(),
+            overwrite=self.opt_overwrite.get(),
+            add_metadata=self.opt_add_metadata.get(),
+            no_export_date=self.opt_no_export_date.get(),
+            include_trash=self.opt_include_trash.get(),
+            notebook=self.opt_notebook_filter.get().strip() or None,
+            tag=self.opt_tag_filter.get().strip() or None,
+        )
+        cmd = build_export_command(
             self.evernote_exe,
-            "export",
-            "--database",
             self.database_path,
-            "--output-dir",
             self.output_path.get(),
-            "--overwrite",
-        ]
+            export_opts,
+        )
         self._queue_log(f"🔧 Export: {' '.join(cmd)}")
 
         proc = subprocess.Popen(
