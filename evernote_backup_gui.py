@@ -234,7 +234,7 @@ def format_elapsed(seconds):
 
 
 class EvernoteBackupApp:
-    VERSION = "v1.14.2"
+    VERSION = "v1.14.3"
     BUILD_DATE = "2026.09"
 
     # 무시 가능한 에러 패턴 (동기화 중 건너뛸 수 있는 항목)
@@ -274,6 +274,10 @@ class EvernoteBackupApp:
         self.current_note = 0
         self.sync_phase = "준비 중"
         self.sync_start_time: float = 0.0
+
+        # DB 실시간 모니터링
+        self._db_monitor_active = False
+        self._db_monitor_initial_notes = 0
 
         # 실시간 로그를 위한 큐
         self.log_queue = queue.Queue()
@@ -1496,21 +1500,18 @@ class EvernoteBackupApp:
                 self.total_notes = int(match_to_dl.group(1))
                 self.root.after(0, self._update_progress)
 
-            # "Downloading N note(s)..." 패턴 - 다운로드 시작 시 비결정 모드로 전환
+            # "Downloading N note(s)..." 패턴 - DB 모니터링 시작
             match_downloading = re.search(r"Downloading\s+(\d+)\s*note", line, re.IGNORECASE)
             if match_downloading:
                 n = int(match_downloading.group(1))
                 self.total_notes = n
                 self.root.after(0, self._update_progress)
-                self.root.after(0, self._start_indeterminate_progress)
-                self.root.after(
-                    0,
-                    lambda c=n: self._set_progress_detail(f"🔽 다운로드 중... 총 {c:,}개 노트"),
-                )
+                self.root.after(0, self._start_db_monitor)
 
             # 다운로드 완료 감지 (Synchronization completed 메시지)
             if "Synchronization completed" in line or "up to date" in line.lower():
                 self.root.after(0, self._stop_indeterminate_progress)
+                self.root.after(0, self._stop_db_monitor)
 
             # 무시 가능한 에러
             if self._is_ignorable_error(line):
@@ -1534,6 +1535,7 @@ class EvernoteBackupApp:
 
         self._current_process = None
         self.root.after(0, self._stop_indeterminate_progress)
+        self.root.after(0, self._stop_db_monitor)
 
         if failed_notes:
             self._queue_log(f"⚠️ 동기화 중 건너뛴 노트: {len(failed_notes)}개")
@@ -1714,6 +1716,67 @@ class EvernoteBackupApp:
         self.progress.stop()
         self.progress.config(mode="determinate")
         self.progress["value"] = 0
+
+    def _start_db_monitor(self):
+        """동기화 중 DB 노트 수·파일 크기를 2초마다 폴링하여 실시간 진행 상황을 표시합니다."""
+        self._db_monitor_active = True
+        self._db_monitor_initial_notes = self._query_db_note_count()
+        self._poll_db_progress()
+
+    def _stop_db_monitor(self):
+        """DB 폴링을 중지합니다."""
+        self._db_monitor_active = False
+
+    def _query_db_note_count(self) -> int:
+        """DB에서 현재 노트 수를 읽어옵니다. 잠금 상태면 0을 반환합니다."""
+        try:
+            conn = sqlite3.connect(self.database_path, timeout=0.5)
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM notes")
+            count = cur.fetchone()[0]
+            conn.close()
+            return count
+        except Exception:
+            return 0
+
+    def _query_db_file_size_str(self) -> str:
+        """DB 파일 크기를 사람이 읽기 쉬운 문자열로 반환합니다."""
+        try:
+            size = os.path.getsize(self.database_path)
+            if size >= 1024 ** 3:
+                return f"{size / 1024**3:.2f} GB"
+            elif size >= 1024 ** 2:
+                return f"{size / 1024**2:.1f} MB"
+            else:
+                return f"{size / 1024:.0f} KB"
+        except Exception:
+            return "?"
+
+    def _poll_db_progress(self):
+        """2초마다 DB를 폴링하여 노트 다운로드 수와 파일 크기를 진행률 패널에 표시합니다."""
+        if not self._db_monitor_active:
+            return
+
+        current = self._query_db_note_count()
+        file_size = self._query_db_file_size_str()
+        downloaded = max(0, current - self._db_monitor_initial_notes)
+        elapsed = format_elapsed(time.time() - self.sync_start_time) if self.sync_start_time else ""
+
+        if self.total_notes > 0:
+            pct = min(downloaded / self.total_notes * 100, 100)
+            self.progress["value"] = pct
+            self.progress_detail_label.config(
+                text=f"🔽 {downloaded:,} / {self.total_notes:,}개 ({pct:.0f}%) | 파일: {file_size}"
+            )
+        else:
+            self.progress_detail_label.config(
+                text=f"🔽 다운로드 중... | 파일: {file_size}"
+            )
+
+        count_text = f"노트: {current:,}개 (DB 전체) | {elapsed}"
+        self.progress_numbers_label.config(text=count_text)
+
+        self.root.after(2000, self._poll_db_progress)
 
     # =========================================================================
     # 유틸리티
