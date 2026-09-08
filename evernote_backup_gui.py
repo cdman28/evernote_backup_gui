@@ -234,7 +234,7 @@ def format_elapsed(seconds):
 
 
 class EvernoteBackupApp:
-    VERSION = "v1.14.1"
+    VERSION = "v1.14.2"
     BUILD_DATE = "2026.09"
 
     # 무시 가능한 에러 패턴 (동기화 중 건너뛸 수 있는 항목)
@@ -502,8 +502,12 @@ class EvernoteBackupApp:
         self._create_db_section(left_col)
         self._create_oauth_section(left_col)
         self._create_backup_section(left_col)
-        self._create_tools_section(left_col)
-        self._create_status_section(left_col)
+
+        # 오른쪽 상단: 동기화 정보 + 진단 도구 (나란히)
+        info_panel = tk.Frame(right_col, bg=self.colors["bg"])
+        info_panel.pack(fill=tk.X, pady=(0, 6))
+        self._create_status_section(info_panel)
+        self._create_tools_section(info_panel)
 
         # 오른쪽: 로그
         self._create_log_section(right_col)
@@ -854,7 +858,7 @@ class EvernoteBackupApp:
             padx=10,
             pady=6,
         )
-        frame.pack(fill=tk.X, pady=(0, 8))
+        frame.pack(side=tk.RIGHT, fill=tk.BOTH)
 
         btn_row = tk.Frame(frame)
         btn_row.pack(fill=tk.X)
@@ -954,8 +958,15 @@ class EvernoteBackupApp:
             self.is_working = False
 
     def _create_status_section(self, parent):
-        frame = tk.Frame(parent, bg=self.colors["bg"])
-        frame.pack(fill=tk.X, pady=(10, 0))
+        frame = tk.LabelFrame(
+            parent,
+            text="📊 동기화 상태",
+            font=self.fonts["section"],
+            fg=self.colors["section_fg"],
+            padx=8,
+            pady=6,
+        )
+        frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 6))
 
         self.progress = ttk.Progressbar(frame, mode="determinate", maximum=100)
         self.progress.pack(fill=tk.X, pady=3)
@@ -1466,7 +1477,6 @@ class EvernoteBackupApp:
         assert proc.stdout is not None
 
         failed_notes = []
-        sync_count = 0
 
         while True:
             if self._cancel_requested:
@@ -1483,17 +1493,27 @@ class EvernoteBackupApp:
             if not line:
                 continue
 
-            # 전체 노트 수 파싱
-            match_total = re.search(r"(\d+)\s*notes?\s*to\s*download", line)
-            if match_total:
-                self.total_notes = int(match_total.group(1))
+            # "N note(s) to download." 패턴으로 총 노트 수 파싱
+            match_to_dl = re.search(r"(\d+)\s*note[s(].*?to\s*download", line, re.IGNORECASE)
+            if match_to_dl:
+                self.total_notes = int(match_to_dl.group(1))
                 self.root.after(0, self._update_progress)
 
-            # 다운로드 진행 감지
-            if re.search(r"[Dd]ownload", line):
-                sync_count += 1
-                self.current_note = sync_count
+            # "Downloading N note(s)..." 패턴 - 다운로드 시작 시 비결정 모드로 전환
+            match_downloading = re.search(r"Downloading\s+(\d+)\s*note", line, re.IGNORECASE)
+            if match_downloading:
+                n = int(match_downloading.group(1))
+                self.total_notes = n
                 self.root.after(0, self._update_progress)
+                self.root.after(0, self._start_indeterminate_progress)
+                self.root.after(
+                    0,
+                    lambda c=n: self._set_progress_detail(f"🔽 다운로드 중... 총 {c:,}개 노트"),
+                )
+
+            # 다운로드 완료 감지 (Synchronization completed 메시지)
+            if "Synchronization completed" in line or "up to date" in line.lower():
+                self.root.after(0, self._stop_indeterminate_progress)
 
             # 무시 가능한 에러
             if self._is_ignorable_error(line):
@@ -1516,6 +1536,7 @@ class EvernoteBackupApp:
                 )
 
         self._current_process = None
+        self.root.after(0, self._stop_indeterminate_progress)
 
         if failed_notes:
             self._queue_log(f"⚠️ 동기화 중 건너뛴 노트: {len(failed_notes)}개")
@@ -1668,7 +1689,7 @@ class EvernoteBackupApp:
 
     def _update_progress(self):
         """진행률 바와 숫자 표시를 업데이트합니다."""
-        if self.total_notes > 0:
+        if self.progress["mode"] == "determinate" and self.total_notes > 0:
             pct = min((self.current_note / self.total_notes) * 100, 100)
             self.progress["value"] = pct
 
@@ -1679,11 +1700,23 @@ class EvernoteBackupApp:
         phase = "동기화" if self.sync_phase == "동기화" else "내보내기"
         count_text = f"{phase}: {self.current_note}"
         if self.total_notes > 0:
-            count_text += f"/{self.total_notes}"
+            count_text += f"/{self.total_notes:,}"
         if elapsed:
             count_text += f" | 경과: {elapsed}"
 
         self.progress_numbers_label.config(text=count_text)
+
+    def _start_indeterminate_progress(self):
+        """다운로드 중 비결정 모드(애니메이션)로 전환합니다."""
+        self.progress.stop()
+        self.progress.config(mode="indeterminate")
+        self.progress.start(40)
+
+    def _stop_indeterminate_progress(self):
+        """비결정 모드를 해제하고 결정 모드로 복귀합니다."""
+        self.progress.stop()
+        self.progress.config(mode="determinate")
+        self.progress["value"] = 0
 
     # =========================================================================
     # 유틸리티
