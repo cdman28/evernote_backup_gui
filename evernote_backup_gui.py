@@ -858,13 +858,10 @@ class EvernoteBackupApp:
             padx=10,
             pady=6,
         )
-        frame.pack(side=tk.RIGHT, fill=tk.BOTH)
-
-        btn_row = tk.Frame(frame)
-        btn_row.pack(fill=tk.X)
+        frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
         self.btn_manage_check = tk.Button(
-            btn_row,
+            frame,
             text="🔍 DB 무결성 검사 (check)",
             command=self._start_manage_check,
             font=self.fonts["btn_sm"],
@@ -873,10 +870,10 @@ class EvernoteBackupApp:
             padx=6,
             pady=3,
         )
-        self.btn_manage_check.pack(side=tk.LEFT, padx=(0, 4), expand=True, fill=tk.X)
+        self.btn_manage_check.pack(fill=tk.X, pady=(0, 4))
 
         self.btn_manage_list = tk.Button(
-            btn_row,
+            frame,
             text="📋 노트북 목록 조회 (list)",
             command=self._start_manage_list,
             font=self.fonts["btn_sm"],
@@ -885,7 +882,7 @@ class EvernoteBackupApp:
             padx=6,
             pady=3,
         )
-        self.btn_manage_list.pack(side=tk.LEFT, expand=True, fill=tk.X)
+        self.btn_manage_list.pack(fill=tk.X)
 
     def _start_manage_check(self):
         """DB 무결성 검사(manage check)를 시작합니다."""
