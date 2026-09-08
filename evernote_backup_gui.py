@@ -437,6 +437,7 @@ class EvernoteBackupApp:
         self.opt_tag_filter = tk.StringVar(value="")
 
         # 고급 설정 변수 (3-3단계)
+        self.oauth_method_var = tk.StringVar(value="import")
         self.opt_use_system_ssl = tk.BooleanVar(value=False)
         self.opt_oauth_host = tk.StringVar(value="")
         self.opt_manual_token = tk.StringVar(value="")
@@ -608,7 +609,33 @@ class EvernoteBackupApp:
             font=self.fonts["small"],
             fg=self.colors["warning"],
         )
-        self.oauth_status_label.pack(anchor=tk.W, pady=(0, 6))
+        self.oauth_status_label.pack(anchor=tk.W, pady=(0, 4))
+
+        # OAuth 인증 방식 선택
+        m_frame = tk.LabelFrame(frame, text="인증 방식 선택", font=self.fonts["small"], padx=6, pady=4)
+        m_frame.pack(fill=tk.X, pady=(0, 6))
+
+        tk.Radiobutton(
+            m_frame,
+            text="📌 에버노트 앱 세션 자동 가져오기 (import - 추천)",
+            variable=self.oauth_method_var,
+            value="import",
+            font=self.fonts["small"],
+        ).pack(anchor=tk.W)
+        tk.Radiobutton(
+            m_frame,
+            text="🌐 웹 브라우저 인증 (desktop)",
+            variable=self.oauth_method_var,
+            value="desktop",
+            font=self.fonts["small"],
+        ).pack(anchor=tk.W)
+        tk.Radiobutton(
+            m_frame,
+            text="⚡ MCP 로컬 서버 인증 (mcp)",
+            variable=self.oauth_method_var,
+            value="mcp",
+            font=self.fonts["small"],
+        ).pack(anchor=tk.W)
 
         self.btn_oauth = tk.Button(
             frame,
@@ -1084,6 +1111,7 @@ class EvernoteBackupApp:
             init_opts = InitDbOptions(
                 backend=self.backend_var.get(),
                 force=True,
+                oauth_method=self.oauth_method_var.get(),
                 use_system_ssl_ca=self.opt_use_system_ssl.get(),
                 oauth_host=self.opt_oauth_host.get().strip() or None,
                 token=self.opt_manual_token.get().strip() or None,
@@ -1224,7 +1252,11 @@ class EvernoteBackupApp:
         if (
             clip
             and clip != self._clipboard_last
-            and re.search(r"https?://.*(?:evernote|yinxiang).*OAuth\.action", clip, re.IGNORECASE)
+            and re.search(
+                r"(?:https?://.*(?:evernote|yinxiang).*OAuth\.action)|(?:evernote://.*)",
+                clip,
+                re.IGNORECASE,
+            )
         ):
             self._clipboard_last = clip
             self._log(f"📋 클립보드에서 OAuth URL 감지! 브라우저를 자동으로 엽니다.")

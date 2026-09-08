@@ -32,6 +32,7 @@ class InitDbOptions:
     """DB 초기화 및 인증(init-db) 옵션 데이터클래스"""
     backend: str = "evernote"
     force: bool = True
+    oauth_method: str = "desktop"  # 'desktop', 'import', 'mcp'
     use_system_ssl_ca: bool = False
     oauth_host: Optional[str] = None
     token: Optional[str] = None
@@ -63,7 +64,6 @@ def build_export_command(
         cmd.append("--overwrite")
 
     if options.notebook and options.notebook.strip():
-        # 콤마로 여러 개 입력된 경우도 지원
         for nb in options.notebook.split(","):
             nb_clean = nb.strip()
             if nb_clean:
@@ -122,6 +122,8 @@ def build_init_db_command(
         cmd.append("--force")
     if opts.backend:
         cmd.extend(["--backend", opts.backend])
+    if opts.oauth_method and opts.oauth_method.strip():
+        cmd.extend(["--oauth-method", opts.oauth_method.strip()])
     if opts.use_system_ssl_ca:
         cmd.append("--use-system-ssl-ca")
     if opts.oauth_host and opts.oauth_host.strip():
