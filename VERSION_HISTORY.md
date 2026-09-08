@@ -4,6 +4,17 @@
 
 ---
 
+## [v1.14.4] - 2026-09-08
+
+### 🐛 버그 수정
+- **PyInstaller 실행 시 evernote-backup.exe 탐색 경로 오류 수정**:
+  - 기존: `script_dir = os.path.dirname(__file__)` → PyInstaller onefile 모드에서 `__file__`이 실제 exe 폴더가 아닌 임시 추출 폴더(`C:\Temp\_MEI123456\`)를 가리켜, "파일 못 찾음" 대화상자에 혼란스러운 경로가 표시됨.
+  - 수정: `getattr(sys, 'frozen', False)` 체크를 추가하여, frozen 모드(exe 실행)에서는 `sys.executable`에서 폴더를 구하도록 변경. 이제 `script_dir`이 항상 GUI exe가 실제 위치한 폴더를 정확히 가리킴.
+  - 후보 탐색 순서도 개선: `같은 폴더 → CWD → PATH` 순으로 최우선 탐색.
+- **GUI exe 파일명 영문화**: `에버노트백업도구_v1.14.x.exe` → `EvernoteBackupGUI_v1.14.x.exe` (Windows 경로 호환성 향상)
+
+---
+
 ## [v1.14.3] - 2026-09-08
 
 ### 🐛 버그 수정 / 기능 개선

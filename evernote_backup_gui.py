@@ -131,15 +131,19 @@ def test_database_path(db_path):
 def get_possible_exe_locations():
     """evernote-backup.exe를 탐색할 후보 경로 목록을 반환합니다."""
     exe_name = "evernote-backup.exe" if platform.system() == "Windows" else "evernote-backup"
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # PyInstaller onefile 실행 시 __file__은 임시 추출 폴더를 가리키므로
+    # sys.executable(실제 exe 경로)에서 폴더를 구한다
+    if getattr(sys, "frozen", False):
+        script_dir = os.path.dirname(sys.executable)
+    else:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
     exec_dir = os.path.dirname(sys.executable)
     cwd = os.getcwd()
 
     candidates = [
-        exe_name,
-        os.path.join(script_dir, exe_name),
-        os.path.join(exec_dir, exe_name),
-        os.path.join(cwd, exe_name),
+        os.path.join(script_dir, exe_name),  # GUI exe와 같은 폴더 (최우선)
+        os.path.join(cwd, exe_name),          # 현재 작업 디렉터리
+        exe_name,                             # PATH 내 상대경로
         os.path.join(script_dir, "bin", exe_name),
         os.path.join(script_dir, "cli", exe_name),
         os.path.join(cwd, "bin", exe_name),
@@ -234,7 +238,7 @@ def format_elapsed(seconds):
 
 
 class EvernoteBackupApp:
-    VERSION = "v1.14.3"
+    VERSION = "v1.14.4"
     BUILD_DATE = "2026.09"
 
     # 무시 가능한 에러 패턴 (동기화 중 건너뛸 수 있는 항목)

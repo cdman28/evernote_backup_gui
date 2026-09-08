@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='EvernoteBackupGUI_v1.14.3',
+    name='EvernoteBackupGUI_v1.14.4',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
