@@ -1,7 +1,7 @@
 # 📋 에버노트 백업 도구 GUI
 ### Evernote Backup GUI — Windows Desktop App
 
-> [evernote-backup](https://github.com/vzhd1701/evernote-backup) v1.14.0 CLI를 감싼 **Windows 전용 GUI 백업 도구**입니다.  
+> [evernote-backup](https://github.com/vzhd1701/evernote-backup) v1.14.0 CLI를 감싼 **Windows 전용 GUI 백업 도구** (GUI v1.14.5)입니다.  
 > 터미널 없이 버튼 클릭만으로 에버노트 전체 노트를 로컬에 ENEX 형식으로 백업합니다.
 
 ---
@@ -32,7 +32,7 @@
 ```
 ┌─────────────────────────────────────┬─────────────────────────────┐
 │  📋 에버노트 백업 도구              │  📄 작업 로그               │
-│  GUI for evernote-backup 1.14.0     │                             │
+│  GUI for evernote-backup 1.14.5     │                             │
 ├─────────────────────────────────────┤  ✅ evernote-backup.exe v1.14.0 발견
 │  💾 DB 설정                         │  ✅ CLI 버전이 권장 버전과 일치합니다.
 │  경로: C:\EvernoteDB\...            │  ✅ OAuth 인증 완료         │
@@ -81,16 +81,16 @@ python main_gui.py
 **방법 2 — 빌드된 EXE 사용 (권장)**
 
 [GitHub Releases](https://github.com/cdman28/evernote_backup_gui/releases)에서:
-1. `EvernoteBackupGUI_v1.14.3.exe` 다운로드
+1. `EvernoteBackupGUI_v1.14.5.exe` 다운로드
 2. [evernote-backup v1.14.0](https://github.com/vzhd1701/evernote-backup/releases/tag/1.14.0)에서 `evernote-backup.exe` 다운로드
 3. 두 파일을 **같은 폴더**에 저장
-4. `EvernoteBackupGUI_v1.14.3.exe` 실행
+4. `EvernoteBackupGUI_v1.14.5.exe` 실행
 
 **폴더 구조 (필수)**
 
 ```
 📁 작업 폴더/
-├── EvernoteBackupGUI_v1.14.3.exe  ← ← 이것을 실행!
+├── EvernoteBackupGUI_v1.14.5.exe  ← ← 이것을 실행!
 └── evernote-backup.exe             ← CLI (필수!)
 ```
 
